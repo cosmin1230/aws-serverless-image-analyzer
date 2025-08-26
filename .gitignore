@@ -1,0 +1,33 @@
+# Terraform-specific files
+# Ignore local state files, which can contain sensitive information.
+*.tfstate
+*.tfstate.*.backup
+
+# Ignore crash log files
+crash.log
+
+# Ignore local plan files, which can also contain sensitive info.
+*.tfplan
+
+# Ignore the .terraform directory, which contains downloaded provider plugins.
+.terraform/
+
+# Ignore any override files
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+
+# Ignore CLI configuration files
+.terraformrc
+terraform.rc
+
+# Ignore build artifacts (our zipped Lambda functions)
+terraform/lambda_functions/*.zip
+
+# Ignore the file with our secret/personal variables
+terraform/terraform.tfvars
+
+# OS-specific files
+.DS_Store
+Thumbs.db

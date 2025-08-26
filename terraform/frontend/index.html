@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Image Rekognition App</title>
+    <style>
+        body { font-family: sans-serif; max-width: 800px; margin: 40px auto; padding: 20px; line-height: 1.6; background-color: #f4f4f4; }
+        h1, h2 { color: #333; }
+        .section { display: none; background-color: white; padding: 20px; margin-bottom: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        input[type="text"], input[type="file"] { width: 80%; padding: 8px; margin-right: 10px; border: 1px solid #ddd; border-radius: 4px; }
+        button { padding: 10px 15px; background-color: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; }
+        button:hover { background-color: #0056b3; }
+        #results { background-color: #e9ecef; padding: 15px; border-radius: 4px; white-space: pre-wrap; word-wrap: break-word; font-family: monospace; }
+    </style>
+    <script src="https://cdn.jsdelivr.net/npm/oidc-client-ts@2.2.0/dist/browser/oidc-client-ts.min.js"></script>
+</head>
+<body>
+
+    <h1>Serverless Image Analyzer</h1>
+    <div id="userInfo">
+        <p>Authenticating...</p>
+        <pre id="email"></pre>
+        <pre id="id-token"></pre>
+    </div>
+    <button id="signOutBtn" style="display:none;">Sign Out</button>
+
+    <div id="app-content" style="display:none;">
+        <div class="section" id="upload-section">
+            <h2>1. Upload a New Image</h2>
+            <input type="file" id="fileInput" accept="image/jpeg, image/png">
+            <button id="uploadBtn">Upload Image</button>
+            <p id="uploadStatus"></p>
+        </div>
+        <div class="section" id="results-section">
+            <h2>2. Get Analysis Results</h2>
+            <input type="text" id="filenameInput" placeholder="Enter image filename (e.g., f50.jpg)">
+            <button id="getResultsBtn">Get Results</button>
+            <h3>Results:</h3>
+            <pre id="results">Awaiting query...</pre>
+        </div>
+    </div>
+    
+    <script type="module">
+        // =================================================================
+        // TEMPLATE VARIABLES - Terraform will replace these.
+        // =================================================================
+        const cognitoAuthConfig = {
+            authority: "https://cognito-idp.${aws_region}.amazonaws.com/${user_pool_id}",
+            client_id: "${app_client_id}",
+            redirect_uri: "https://${cloudfront_domain_name}/index.html",
+            post_logout_redirect_uri: "https://${cloudfront_domain_name}/login.html",
+            response_type: "code",
+            scope: "openid email profile"
+        };
+        const presignedUrlApi = 'https://${api_gateway_id}.execute-api.${aws_region}.amazonaws.com/prod/uploads';
+        const resultsApi = 'https://${api_gateway_id}.execute-api.${aws_region}.amazonaws.com/prod/results';
+        // =================================================================
+        
+        const userManager = new oidc.UserManager(cognitoAuthConfig);
+        let accessToken = null;
+
+        userManager.signinRedirectCallback().then(user => {
+            accessToken = user.access_token;
+            document.getElementById("email").textContent = "Email: " + user.profile.email;
+            document.getElementById("id-token").textContent = "ID Token: " + user.id_token.substring(0, 30) + "...";
+            document.getElementById("signOutBtn").style.display = "block";
+            document.getElementById("app-content").style.display = "block";
+            document.getElementById("upload-section").style.display = "block";
+            document.getElementById("results-section").style.display = "block";
+        }).catch(() => { window.location.href = "/login.html"; });
+
+        document.getElementById("signOutBtn").addEventListener("click", () => userManager.signoutRedirect());
+        document.getElementById("uploadBtn").addEventListener("click", uploadFile);
+        document.getElementById("getResultsBtn").addEventListener("click", getResults);
+
+        async function uploadFile() {
+            const uploadStatusEl = document.getElementById('uploadStatus');
+            if (!accessToken) { uploadStatusEl.textContent = "Not authenticated!"; return; }
+            
+            const fileInput = document.getElementById('fileInput');
+            const selectedFile = fileInput.files[0];
+            
+            if (!selectedFile) { uploadStatusEl.textContent = 'Please select a file first!'; return; }
+            uploadStatusEl.textContent = "Requesting upload data for " + selectedFile.name + "...";
+
+            try {
+                const presignedResponse = await fetch(presignedUrlApi, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': "Bearer " + accessToken },
+                    body: JSON.stringify({ filename: selectedFile.name, contentType: selectedFile.type })
+                });
+
+                if (!presignedResponse.ok) throw new Error(await presignedResponse.text());
+                
+                const presignedData = await presignedResponse.json();
+                const formData = new FormData();
+                Object.entries(presignedData.fields).forEach(([key, value]) => {
+                    formData.append(key, value);
+                });
+                formData.append('file', selectedFile);
+
+                await fetch(presignedData.url, {
+                    method: 'POST',
+                    mode: 'no-cors',
+                    body: formData
+                });
+                
+                uploadStatusEl.textContent = "Success! '" + selectedFile.name + "' uploaded.";
+
+            } catch (error) {
+                console.error('Upload Error:', error);
+                uploadStatusEl.textContent = "Error: " + error.message;
+            }
+        }
+
+        async function getResults() {
+            const resultsEl = document.getElementById('results');
+            if (!accessToken) { resultsEl.textContent = "Not authenticated!"; return; }
+            
+            const filenameInput = document.getElementById('filenameInput');
+            const filename = filenameInput.value;
+            
+            if (!filename) { resultsEl.textContent = 'Please enter a filename.'; return; }
+            resultsEl.textContent = "Querying for " + filename + "...";
+
+            try {
+                const response = await fetch(resultsApi + '/' + filename, {
+                    headers: { 'Authorization': "Bearer " + accessToken }
+                });
+                const data = await response.json();
+
+                if (!response.ok) {
+                   resultsEl.textContent = "Error: " + (data.message || "Item not found.");
+                } else {
+                   if (data.Item && data.Item.RekognitionLabels && data.Item.RekognitionLabels.S) {
+                       const labels = JSON.parse(data.Item.RekognitionLabels.S);
+                       
+                       const formattedLabels = labels.map(function(label) {
+                           return "- " + label.Name + " (Confidence: " + label.Confidence.toFixed(2) + "%)";
+                       }).join('\n');
+
+                       resultsEl.textContent = formattedLabels;
+                   } else {
+                       resultsEl.textContent = "No labels found for this image.";
+                   }
+                }
+            } catch (error) {
+                console.error('Get Results Error:', error);
+                resultsEl.textContent = "Error: " + error.message;
+            }
+        }
+    </script>
+</body>
+</html>

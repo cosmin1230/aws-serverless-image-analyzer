@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Login - Image Analyzer</title>
+</head>
+<body>
+    <h1>Welcome to the Image Analyzer</h1>
+    <p>Please sign in to continue.</p>
+    <button id="signInBtn">Sign In</button>
+
+    <!-- Load the oidc-client-ts library from a CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/oidc-client-ts@2.2.0/dist/browser/oidc-client-ts.min.js"></script>
+
+    <script type="module">
+        // --- 1. Configure your user pool app client ---
+        const cognitoAuthConfig = {
+            authority: "https://cognito-idp.${aws_region}.amazonaws.com/${user_pool_id}",
+            client_id: "${app_client_id}",
+            redirect_uri: "https://${cloudfront_domain_name}/index.html",
+            post_logout_redirect_uri: "https://${cloudfront_domain_name}/login.html",
+            response_type: "code",
+            scope: "openid email profile"
+        };
+        
+        // --- 2. Create a UserManager instance ---
+        const userManager = new oidc.UserManager(cognitoAuthConfig);
+
+        // --- 3. Add a sign-in button that initiates a redirect ---
+        document.getElementById("signInBtn").addEventListener("click", async () => {
+            await userManager.signinRedirect();
+        });
+    </script>
+</body>
+</html>
