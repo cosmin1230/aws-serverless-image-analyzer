@@ -1,6 +1,7 @@
 # Terraform-specific files
 # Ignore local state files, which can contain sensitive information.
 *.tfstate
+*.tfstate.backup
 *.tfstate.*.backup
 
 # Ignore crash log files
