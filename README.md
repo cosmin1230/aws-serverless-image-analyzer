@@ -6,6 +6,8 @@ This repository is the result of a hands-on learning lab, demonstrating a real-w
 
 ## Architecture Flow
 
+![Architecture Diagram](https://github.com/user-attachments/assets/7ca67c4b-ab44-41a7-8ab1-7ca5a691faca)
+
 The application consists of two main, decoupled workflows:
 
 **1. The "Writer" Workflow (Asynchronous, Event-Driven):**
